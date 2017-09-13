@@ -135,10 +135,7 @@ std::map<std::string , Tally> transport(Input I) {
       // do transport
 
       double dist_to_collision = -log( Urand() ) / total_xs;
-      double x1                = p.x;
-
       p.x += dist_to_collision * p.mu;
-      double delta_x           = p.x - x1;
 
       // check for leakage
       if ( p.x < 0.0 || p.x > thickness ) {
@@ -149,7 +146,6 @@ std::map<std::string , Tally> transport(Input I) {
           leakage_hist += 1.0;
         }
       }
-
       
       // determine next transport step
       if (p.alive == true) {
@@ -183,7 +179,6 @@ std::map<std::string , Tally> transport(Input I) {
   // flux
   Tally flux_tally;
   double  sum_path_lengths = 0;
-  std::vector <double> diff_path_lengths_sqrd(nBins , 0);
 
   for(int i = 0; i < path_lengths.size(); ++i) {
     path_lengths_squared[i] = path_lengths[i] * path_lengths[i];
