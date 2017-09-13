@@ -7,7 +7,7 @@
 #include <vector>
 #include <map>
 #include <numeric>
-
+//comment
 //TODO finish Input.cpp
 //TODO make slab.cpp
 #include "Random.h"
@@ -144,52 +144,12 @@ std::map<std::string , Tally> transport(Input I) {
       if ( p.x < 0.0 || p.x > thickness ) {
         // leaked out
         p.alive = false;
-        if ( p.x < 0.0 ) {
-          // update distance traveled and position to start of the slab
-          p.x = 0;
-          dist_to_collision = x1 / std::abs(p.mu); 
-        // tally if leaked out of right side
-        }
         if ( p.x > thickness ) {
           //update leakage tally
           leakage_hist += 1.0;
-          // update distance traveled and position to end of the slab 
-          p.x = thickness;
-          dist_to_collision = ( p.x - x1 ) / std::abs(p.mu);
         }
       }
 
-      // update path flux tally in each spatial bin
-      // indexing from 0
-      int    oldBin  = floor(x1 / b);
-      int    newBin  = floor(p.x / b);          
-      
-      // if the particle stayed in the same bin,
-      // add the whole path length to the sum in that bin
-      if ( oldBin == newBin ) {
-        path_lengths[oldBin] += dist_to_collision;
-      }
-      //  otherwise iterate through the bins the particle passed through, 
-      //  incrementing them by the path length traversed in that bin
-      else {
-        //sort the bins and positions the particles moved between
-        bool forward = newBin > oldBin; 
-        
-        int    smallBin   = (forward) ? (oldBin):(newBin);
-        int    largeBin   = (forward) ? (newBin):(oldBin);
-        double small_x    = (forward) ? (x1):(p.x);
-        double large_x    = (forward) ? (p.x):(x1);
-	
-        path_lengths[smallBin] += dist_to_collision * (( smallBin +1 ) * b - small_x ) / delta_x;
-        path_lengths[largeBin] += dist_to_collision * (  -( largeBin ) * b + large_x ) / delta_x;
-        
-        // std::cout<<"distance " << dist_to_collision << " small x  " << small_x << " large x " << large_x <<  std::endl;     
-        //  increment the path_lengths in all the bins the particle
-        //  passed through completely
-        for ( int i = smallBin + 1 ; i <= largeBin - 1; ++i ) {
-          path_lengths[i] += b / std::abs(p.mu);
-        }
-      }
       
       // determine next transport step
       if (p.alive == true) {
