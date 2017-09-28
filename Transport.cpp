@@ -149,10 +149,8 @@ std::queue<Particle*> makeStack(Source s , int size) {
     float  prob = 0;
     float  mu;
     
-    std::cout << "xi is " << xi << std::endl;
     for(int i = 0; i < s.mu_probs.size(); ++i) {
         if(xi > prob) {
-          std::cout << "prob is " << prob << std::endl;
           prob += s.mu_probs[i];
         }
         else if(found == false) {
@@ -174,14 +172,20 @@ std::queue<Particle*> makeStack(Source s , int size) {
 //	                   							         	                                                 //
 // ********************************************************************************************************* //
 
-void transport(Tally &leak_tally , Tally &flux_tally, Slab s) {
+void transport(Tally &leak_tally , Tally &flux_tally, Slab s , std::queue<Particle*> stack) {
 //  this function takes in pointers to a slab and tally objects, and a pointer to a stack of particles, 
 //  modifies tally objects tally objects 
 //  for each particle in the stack
 //  run transport
-    // Particle * tmp = stack.front();
-    // stack.pop() // get rid of the pointer to the particle 
-    // delete(&tmp) // destruct the memory holding the particle
+  while(! stack.empty())
+  {  
+    
+
+    Particle * tmp = stack.front();
+    stack.pop(); // get rid of the pointer to the particle 
+    delete(&tmp); // destruct the memory holding the particle
+  }
+
 };
 
 // ********************************************************************************************************* //
@@ -194,7 +198,7 @@ int main()  {
   // set up transport problem
   //TODO create input class constructor that parses from input file
   Input I; 
-  I.nHistories       = 1;
+  I.nHistories       = 10;
   I.slab.width       = 4.0;
   I.slab.nCells      = 4;
   I.slab.total_xs    = {0.0 , 0.3 , 1.0 , 1.0 } ;
@@ -210,7 +214,7 @@ int main()  {
   // initialize a particle stack
   std::queue<Particle*> stack; 
   stack = makeStack(s , I.nHistories);
-  std::cout << " the angle of the first particle on the stack isssssss: "<< stack.front()->mu << std::endl;
+
   // create and populate a dictionary of Tally objects
   // with the key being the quantity being tallied
   Leakage leak_tally;
@@ -223,11 +227,10 @@ int main()  {
 
   // run and time the transport function
   std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
-  // transport(I.tallies["Leakage Probability"], I.tallies["Flux"], I.slab);
+  transport(I.tallies["Leakage Probability"], I.tallies["Flux"], I.slab , stack);
   std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
   double duration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
-
   
   // output results 
   // terminal_out( I.tallies , duration);
