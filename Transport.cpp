@@ -7,11 +7,18 @@
 #include <vector>
 #include <map>
 #include <numeric>
-
+#include <queue>
 #include "Random.h"
 
 //TODO make input class  in Input.cpp and Input.h, with read from file function
 //TODO replace boost map with templated classes
+
+class Source {
+    double location
+    std::vector<double> mu_bins  //bins for source emission angle
+    std::vector<double> mu_probs //probability for the bin spanning from
+                                 //the previous index to current
+};
 
 class Particle {
   public:
@@ -46,6 +53,7 @@ class Leakage {
     double   uncertainty;
 };
 
+std::queue<Particle> makeStack()
 void Leakage::setVal(double nHistories , Slab s) { 
   // Finalizes the leakage tally and calculates uncertainty
   value =  count / nHistories;
@@ -133,7 +141,16 @@ int main()  {
   I.slab.nCells      = 4;
   I.slab.total_xs    = {0.0 , 0.3 , 1.0 , 1.0 } ;
   I.slab.scatter_xs  = {0.0 , 0.25 , 0.7 , 0.1};
-  I.slab.fission_xs  = {0.0};
+  I.slab.fission_xs  = {0.0 , 0.0 , 0.0 , 0.0};
+
+  // define a source
+  Source s;
+  s.location =   2.0;
+  s.mu_bins  = {-1.0 , 0.0 , 1.0};
+  s.mu_probs = { 0.2 , 0.3 , 0.5};
+
+  // initialize a particle stack
+  stack = makeStack(s , I.nHistories)
 
   // create and populate a dictionary of Tally objects
   // with the key being the quantity being tallied
@@ -141,15 +158,10 @@ int main()  {
   Flux    flux_tally;
   flux_tally.nbins = 1000; //the mesh for the flux tally has 1000 bins
 
-  // set flags for output formating 
-  leak_tally.vector = false;
-  leak_tally.total  = false;
-  flux_tally.vector = true;
-  flux_tally.total  = true;
-
   I.tallies["Leakage Probability"] = leak_tally;
   I.tallies["Flux"] = flux_tally;
   
+
   // run and time the transport function
   std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
   transport(I.tallies["Leakage Probability"], I.tallies["Flux"], I.slab);
