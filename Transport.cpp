@@ -9,9 +9,9 @@
 #include <numeric>
 
 #include "Random.h"
-#include "boost/variant.hpp"
 
 //TODO make input class  in Input.cpp and Input.h, with read from file function
+//TODO replace boost map with templated classes
 
 class Particle {
   public:
@@ -107,75 +107,15 @@ class Input {
 
 
 // ********************************************************************************************************* //
-//  Output functions: take in a dictionary of Tally objects, and the duration of time required to run        //
-//      transport(). Outputs results to terminal and an output file "tallies.out"                            //
-// ********************************************************************************************************* //
-
-void terminal_out(std::map<std::string , boost::variant <Leakage , Flux > > tallies , double duration) {
-// a function to output the results of the simulation to the terminal
-// requires: a dictionary of Tally objects
-
-  //  iterate over tally dictionary, output tally results to terminal
-  std::cout << std::endl  <<"============================================"  << std::endl;
-   
-  for (const auto &keyVal : tallies ) {
-    if (keyVal.second.vector == false or keyVal.second.total == true) {
-      std::string total = (keyVal.second.total == true) ? ("Total "):("");
-      std::cout << std::setw (25 - keyVal.first.length()) << total << keyVal.first << ": " ;
-      std::cout << std::fixed << std::setprecision(6) << keyVal.second.value; 
-      std::cout << std::setw (4) << "   stdev: " << std::fixed << std::setprecision(6);
-      std::cout << keyVal.second.uncertainty << std::endl;
-    }
-  } 
-  
-  std::cout << std::endl  <<"============================================"  << std::endl;
-  
-  //  output timing results to terminal
-  std::cout << "This run took "  << duration / 1000 << " miliseconds"<< std::endl;
-  
-  std::cout << "============================================"  << std::endl;
-  
-};
-
-void file_out(Slab slab , std::map<std::string , boost::variant <Leakage , Flux > > tallies , double duration) {
-// a function to output the vector tallies  of the simulation to a file
-// requires: a dictionary of Tally objects
-  
-  std::ofstream out;
-  out.open("tallies.out");
-  out << std::endl  <<"============================================"  << std::endl;
-  out << "This run took "  << duration / 1000 << " miliseconds"<< std::endl; 
-  out << std::endl  <<"============================================"  << std::endl;
-
-  //  iterate over tally dictionary, output tally results to terminal
-  for (const auto &keyVal : tallies ) {
-    if (keyVal.second.vector == false or keyVal.second.total == true) {
-      std::string total = (keyVal.second.total == true) ? ("Total "):("");
-      out  << total << keyVal.first << ": " << keyVal.second.value;
-      out  << "    stdev: " << keyVal.second.uncertainty << std::endl;
-      // output vector results
-      if (keyVal.second.vector == true) {
-        out << "x       Value     Uncertainty" << std::endl;
-        double b = slab.width / keyVal.second.nbins;
-        for (int i = 0; i < keyVal.second.values.size(); ++i) {
-          out << std::fixed << std::setprecision(7) << b * i << "   ";
-          out << std::fixed << std::setprecision(7) << keyVal.second.values[i];
-	  out << "      " << keyVal.second.uncertainties[i] << std::endl;
-        }
-      }; // loop over tally values
-      out << std::endl  <<"============================================"  << std::endl;
-    }
-  } // loop over tallies
-};
-
-// ********************************************************************************************************* //
 //  Transport function: Sets up transport problem according to Input object, modifies Tally objects          //
 //	                   							         	             //
 // ********************************************************************************************************* //
 
 void transport(Tally &leak_tally , Tally &flux_tally, Slab s) {
-// this function takes in a slab object, a number of histories, runs transport, and outputs a dictionary of tally objects 
-  
+//  this function takes in pointers to a slab and tally objects, and a pointer to a stack of particles, 
+//  modifies tally objects tally objects 
+//  for each particle in the stack
+//  run transport  
 };
 
 // ********************************************************************************************************* //
