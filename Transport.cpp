@@ -59,12 +59,10 @@ class Slab {
 
 class Leakage {
   public:
-    bool     vector;
-    bool     total;
-    int      nbins;
-
-    void     incrementCount(void);
-    void     setVal(double nHistories , Slab s);
+    void       incrementCount(void);
+    void       setVal(double nHistories);
+    double     getVal(void);
+               Leakage();
   private:
     double   count;
     double   squared;
@@ -73,15 +71,29 @@ class Leakage {
     double   uncertainty;
 };
 
-void Leakage::setVal(double nHistories , Slab s) { 
+void Leakage::setVal(double nHistories ) { 
   // Finalizes the leakage tally and calculates uncertainty
   value =  count / nHistories;
+  double squared = 1;
   uncertainty = sqrt( ( squared / nHistories - pow(value,2) ) / nHistories );
 };
 
 void Leakage::incrementCount(void) {
   count += 1.0;
 };
+
+Leakage::Leakage() {
+  count = 0;
+  squared = 0;
+  hist = 0;
+  value = 0;
+  uncertainty = 0;
+};
+
+double Leakage::getVal(void) {
+  return(value);
+};
+
 
 class Flux {
   public:
@@ -161,6 +173,10 @@ std::queue<Particle*> makeStack(Source s , int size) {
           found = true;
         }
     }
+
+    if(found == false) {
+      mu = s.mu_bins[s.mu_bins.size()-1];
+    }
     
     Particle *p = new Particle(s.location , mu);
     // push a pointer to p to the stack
@@ -182,68 +198,79 @@ void transport(Leakage &leak_tally , Flux &flux_tally, Slab s , std::queue<Parti
 //  for each particle in the stack
 //  run transport
   double b = s.width / flux_tally.nbins;
-  while(! stack.empty()){  
-    
-    while ( stack.front()->alive ) {
-      // do transport
 
-      double optical_dist = -log( Urand() ); // optical distance to collison
-      double x1           = stack.front()->x;
+  while( ! stack.empty() ){  
 
-      stack.front()->x += optical_dist * stack.front()->mu / s.total_xs;
-      double delta_x = stack.front()->x - x1;
+      while ( stack.front()->alive ) {
+        // do transport
+        double optical_dist = -log( Urand() ); // optical distance to collison
+        double x1           = stack.front()->x;
 
-      // check for leakage
-      if ( stack.front()->x < 0.0 || stack.front()->x > s.width ) {
-        // leaked out
-        stack.front()->alive = false;
-        if ( stack.front()->x < 0.0 ) {
-          // update distance traveled and position to start of the slab
-          stack.front()-> x = 0;
-          optical_dist = s.total_xs * x1 / std::abs(stack.front()->mu); 
-        // tally if leaked out of right side
+        stack.front()->x += optical_dist * stack.front()->mu / s.total_xs;
+        double delta_x = stack.front()->x - x1;
+ 
+        // check for leakage
+        if ( stack.front()->x < 0.0 || stack.front()->x > s.width ) {
+          // leaked out
+          stack.front()->alive = false;
+          if ( stack.front()->x < 0.0 ) {
+            // update distance traveled and position to start of the slab
+            stack.front()-> x = 0;
+            optical_dist = s.total_xs * x1 / std::abs(stack.front()->mu); 
+          // tally if leaked out of right side
+          }
+          if ( stack.front()->x > s.width ) {
+            //update leakage tally
+            leak_tally.incrementCount();
+            // update distance traveled and position to end of the slab 
+            stack.front()->x = s.width;
+            optical_dist = s.total_xs * ( stack.front()->x - x1 ) / std::abs(stack.front()->mu);
+          }
         }
-        if ( stack.front()->x > s.width ) {
-          //update leakage tally
-          //leakage_hist += 1.0;
-          // update distance traveled and position to end of the slab 
-          stack.front()->x = s.width;
-          optical_dist = s.total_xs * ( stack.front()->x - x1 ) / std::abs(stack.front()->mu);
-        }
-      }
 
-      // update path flux tally in each spatial bin
-      // indexing from 0
-      int    oldBin  = floor(x1 / b);
-      int    newBin  = floor(stack.front()->x / b);          
+        // update path flux tally in each spatial bin
+        // indexing from 0
+        int    oldBin  = floor(x1 / b);
+        int    newBin  = floor(stack.front()->x / b);          
       
-      // if the particle stayed in the same bin,
-      // add the whole path length to the sum in that bin
-      if ( oldBin == newBin ) {
-      //   path_lengths[oldBin] += optical_dist / s.total_xs;
-      }
-      //  otherwise iterate through the bins the particle passed through, 
-      //  incrementing them by the path length traversed in that bin
-      else {
-        //sort the bins and positions the particles moved between
-        bool forward = newBin > oldBin; 
+        // if the particle stayed in the same bin,
+        // add the whole path length to the sum in that bin
+        if ( oldBin == newBin ) {
+        //   path_lengths[oldBin] += optical_dist / s.total_xs;
+        }
+        //  otherwise iterate through the bins the particle passed through, 
+        //  incrementing them by the path length traversed in that bin
+        else {
+          //sort the bins and positions the particles moved between
+          bool forward = newBin > oldBin; 
         
-        int    smallBin   = (forward) ? (oldBin):(newBin);
-        int    largeBin   = (forward) ? (newBin):(oldBin);
-        double small_x    = (forward) ? (x1):(stack.front()->x);
-        double large_x    = (forward) ? (stack.front()->x):(x1);
-      }
-      //    path_lengths[smallBin] += dist_to_collision * (( smallBin +1 ) * b - small_x ) / delta_x;
+          int    smallBin   = (forward) ? (oldBin):(newBin);
+          int    largeBin   = (forward) ? (newBin):(oldBin);
+          double small_x    = (forward) ? (x1):(stack.front()->x);
+          double large_x    = (forward) ? (stack.front()->x):(x1);
+        }
+        //    path_lengths[smallBin] += dist_to_collision * (( smallBin +1 ) * b - small_x ) / delta_x;
 
-
-      if(stack.front()->alive == false) {
-        // destruct particle object and remove ptr from stack
-        Particle * tmp = stack.front();
-        stack.pop(); // get rid of the pointer to the particle 
-        delete(&tmp); // destruct the memory holding the particle
+        // determine next transport step
+        if (stack.front()->alive == true) {
+          // have a collision
+          if ( Urand() < s.scatter_xs / s.total_xs ) {
+            // particle scatters
+            stack.front()->mu = 2.0 * Urand() - 1.0;
+          }
+          else {
+            // absorbed :(
+            stack.front()->alive = false;
+          }
       }
     } // end of current particle
+
+    // destruct particle object and remove ptr from stack
+    Particle * tmp = stack.front();
+    stack.pop(); // get rid of the pointer to the particle 
+    delete(&tmp); // destruct the memory holding the particle
   } // end of particle stack
+
 };
 
 // ********************************************************************************************************* //
@@ -256,7 +283,7 @@ int main()  {
   // set up transport problem
   //TODO create input class constructor that parses from input file
   Input I; 
-  I.nHistories       = 1;
+  I.nHistories       = 1e8;
   I.slab.width       = 4.0;
   I.slab.nCells      = 4;
   I.slab.total_xs    = 1.0;
@@ -269,9 +296,12 @@ int main()  {
 
   // define a source
   Source s;
-  s.location =   2.0;
-  s.mu_bins  = {-1.0 , -0.8 , -0.6, -0.4 , 0.0 , 0.8};
-  s.mu_probs = { 0.1 ,  0.2 , 0.2 , 0.1 ,  0.2 , 0.2};
+//  s.location =   2.0;
+//  s.mu_bins  = {-1.0 , -0.8 , -0.6, -0.4 , 0.0 , 0.8};
+//  s.mu_probs = { 0.1 ,  0.2 , 0.2 , 0.1 ,  0.2 , 0.2};
+  s.location =   0.0;
+  s.mu_bins  = {1.0 };
+  s.mu_probs = { 1.0};
 
   // initialize a particle stack
   std::queue<Particle*> stack; 
@@ -291,6 +321,10 @@ int main()  {
 
   double duration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
   
+  
+  leak_tally.setVal(I.nHistories);
+
+  std::cout<< "leakage prob: " << leak_tally.getVal() << std::endl;
   // output results 
   // terminal_out( I.tallies , duration);
   // file_out(I.slab , I.tallies , duration); 
