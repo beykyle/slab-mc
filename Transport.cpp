@@ -10,8 +10,6 @@
 #include <stack>
 #include "Random.h"
 
-//TODO make input class  in Input.cpp and Input.h, with read from file function
-
 // ********************************************************************************************************* //
 //  Source class                                                                                             //
 // ********************************************************************************************************* //
@@ -32,6 +30,7 @@ class Particle {
     double x, mu;
     int    cell;
     bool   alive;
+
     Particle();
     Particle(double x , double mu);
     ~Particle(void);
@@ -59,12 +58,108 @@ class Slab {
   public:
     double               width;
     int                  nCells;
-    double scatter_xs;
-    double total_xs;
-    double fission_xs;
-//    std::vector <double> scatter_xs;
-//    std::vector <double> total_xs;
-//    std::vector <double> fission_xs;
+    std::vector <double> cellStarts;
+    std::vector <double> scatter_xs;
+    std::vector <double> total_xs;
+    std::vector <double> fission_xs;
+
+    void   setNCells(double ncells);
+    double updateCell(Particle *p , double optical_dist);
+    double checkLeaks(Particle *p , double optical_dist);
+};
+
+void Slab::setNCells(double ncells) {
+    nCells = ncells;
+};
+
+double Slab::checkLeaks(Particle *p , double delta_x) {
+  double delta_x_real = delta_x;
+  double xnew = p->x + delta_x;
+
+  if ( xnew  < 0.0 or xnew > width ) {
+    // set p.cell to a negative number, to indicate a leak
+    p -> cell = -1;
+
+    // leaked out
+    p->alive = false;
+    if ( xnew < 0.0 ) {
+      // update delta_x_real, and position to start of the slab
+      delta_x_real = -p->x;
+      p->x = 0.0;
+    }
+    if ( xnew  > width ) {
+      // update delta_x_real, and position to end of the slab 
+      delta_x_real = width - p->x;
+      p->x = width + 0.1;
+    }
+
+  }
+  return(delta_x_real);
+};
+
+double Slab::updateCell(Particle *p , double optical_dist) {
+  double delta_x_real = 0;
+  double epsilon = 0.00000001;
+  double upBound , loBound;
+
+  if(p->cell == cellStarts.size() -1){
+    upBound = width;
+  }
+  else {
+      upBound = cellStarts[p->cell+1];
+  }
+  
+  if(p->cell == 0) {
+    loBound = 0.0;
+  }
+  else {
+    loBound = cellStarts[p->cell];
+  }
+  
+  double delta_x = optical_dist / total_xs[p->cell] / p->mu;
+  
+  // check for initial leakage
+  delta_x = checkLeaks(p , delta_x);
+  if (p-> cell < 0) {
+    std::cout << "Leaked! Particle x:" << p->x << " cell:" << p->cell << " delta x: " << delta_x <<std::endl <<std::endl;
+    return(delta_x);
+  };
+
+  if (p-> x + delta_x < upBound and p->x + delta_x > loBound) {
+    p->x += delta_x;
+    std::cout << "We didn't change cells!";
+    std::cout << " Particle x: " << p->x << " cell: " << p->cell  
+              << " delta_x:  "<< delta_x_real << " optical_dist: " << optical_dist  << std::endl;
+    return(delta_x);
+  };
+
+  // move particle to new cell and update delta_x
+  if (p-> x + delta_x > upBound) {
+    // if particle went forward a cell
+    p->cell+=1; // update cell
+    delta_x_real += upBound - p->x; // increment delta_x_real by the distance to the new cell
+    p->x = upBound + epsilon; // update particle location
+    // recursively call updateCell with optical distance decremented by optical distance traversed 
+    // in the current cell
+    std::cout << "Moving to the next cell! Particle x: " << p->x << " cell: " << p->cell  
+              << " delta_x:  "<< delta_x_real << " optical_dist: " << optical_dist 
+              << " OD from move to next cell: " << ((delta_x_real / p->mu) / total_xs[p->cell - 1])
+              << std::endl;
+    delta_x_real += updateCell(p , optical_dist - ((delta_x_real / p->mu) / total_xs[p->cell - 1]) ); 
+  }
+
+  else if (p->x + delta_x < loBound) {
+    // if particle went back a celll
+    p->cell -= 1;
+    delta_x_real -= p->x - loBound; // increment delta_x_real by the distance to the new cell
+    p->x = loBound - epsilon; // update particle location
+    // recursively call updateCell with optical distance decremented by optical distance traversed 
+    // in the current cell
+    delta_x_real -= updateCell(p , optical_dist - ((delta_x_real / p->mu) / total_xs[p->cell+1]) );
+  }
+
+  return(delta_x_real);
+
 };
 
 // ********************************************************************************************************* //
@@ -73,14 +168,13 @@ class Slab {
 
 class Leakage {
   public:
-    void       incrementCount(void);
     void       setVal(double nHistories);
+    void       update(Particle *p , double end);
     double     getVal(void);
                Leakage();
+
   private:
     double   count;
-    double   squared;
-    double   hist;
     double   value;
     double   uncertainty;
 };
@@ -88,18 +182,19 @@ class Leakage {
 void Leakage::setVal(double nHistories ) { 
   // Finalizes the leakage tally and calculates uncertainty
   value =  count / nHistories;
-  double squared = 1;
+  double squared = pow(count , 2);
   uncertainty = sqrt( ( squared / nHistories - pow(value,2) ) / nHistories );
 };
 
-void Leakage::incrementCount(void) {
-  count += 1.0;
+void Leakage::update(Particle *p , double end) {
+  if(p->x > end and p-> cell < 0) {
+    count++;
+  }
 };
+
 
 Leakage::Leakage() {
   count = 0;
-  squared = 0;
-  hist = 0;
   value = 0;
   uncertainty = 0;
 };
@@ -115,18 +210,18 @@ double Leakage::getVal(void) {
 
 class Flux {
   public:
-    std::vector <double> path_lengths;
-                         
                          Flux(int meshBins , double x0 , double x1);
     std::vector<double>  getBounds(void);
     int                  getBins(void);
     double               getWidth(void);
     std::vector<double>  getVals(void);
     void                 setVals(double nhistories);
+    void                 update(Particle *p , double delta_x);
   private:
     double               width;
     int                  nbins;
     std::vector<double>  bounds;
+    std::vector <double> path_lengths;
     std::vector <double> values;
     std::vector <double> uncertainties;
 };
@@ -158,15 +253,66 @@ void Flux::setVals(double nHistories ) {
   }
 };
 
+
+void Flux::update(Particle *p , double delta_x) {
+
+     if(p->x >= bounds[0] and p->x <= bounds[1]) {
+       // if particle is inside the bounds of the mesh tally
+       // update path flux tally in each spatial bin indexing from 0
+       double b       = width / nbins;
+       int    oldBin  = floor(p->x - delta_x / b);
+       int    newBin  = floor(p->x / b);          
+       bool   forward = newBin > oldBin; 
+
+       // if the particle stayed in the same bin,
+       // add the whole path length to the sum in that bin
+       if ( oldBin == newBin ) {
+         path_lengths[oldBin] += delta_x / std::abs(p->mu);
+       }
+   
+       else {
+         //  otherwise iterate through the bins the particle passed through, 
+         //  incrementing them by the path length traversed in that bin
+         int    smallBin , largeBin;
+         double small_x  , large_x;
+
+         //sort the bins and positions the particles moved between
+         if (forward == true) {
+           smallBin = oldBin;
+           largeBin = newBin;
+           small_x  = p->x + delta_x;
+           large_x  = p->x;
+         }
+         else if (forward == false) {
+           smallBin = newBin;
+           largeBin = oldBin;
+           small_x  = p->x;
+           large_x  = p->x + delta_x;
+         }
+       
+         // increment the path lengths of the starting and ending mesh bin
+         path_lengths[smallBin] +=  ( ( smallBin +1 ) * b - small_x ) / std::abs(p->mu);
+         path_lengths[largeBin] +=  (-( largeBin    ) * b + large_x ) / std::abs(p->mu);
+       
+         //  increment the path_lengths in all the mesh bins the particle passed through completely
+         for ( int i = smallBin + 1 ; i <= largeBin - 1; ++i ) {
+           path_lengths[i] += b / std::abs(p->mu);
+         }
+      }
+    }
+
+};
+
 // ********************************************************************************************************* //
 //  Input class                                                                                              //
 // ********************************************************************************************************* //
 
 class Input {
   public:  
-    Slab                           slab;
-    double                         nHistories;
+    Slab     slab;
+    double   nHistories;
 };
+
 
 // ********************************************************************************************************* //
 //  makeStack function: creates the initial particle stack according to the source definition                //
@@ -180,7 +326,6 @@ std::stack<Particle*> makeStack(Source s , int size) {
   
   std::stack<Particle*> pstack; // fite me irl
   for(int i=0 ; i < size ; ++i) {
-
     //  sample from emission angle
     double  xi    = Urand();
     bool    found = false;
@@ -202,10 +347,12 @@ std::stack<Particle*> makeStack(Source s , int size) {
     }
     
 //    Particle *p = new Particle(s.location , mu);
-    Particle *p = new Particle(0.0 , 1.0);
+    Particle *p = new Particle(s.location , mu);
     // push a pointer to p to the stack
     pstack.push(p);
   }
+
+  //std::cout << "Made a particle stack with " << pstack.size() << " particles" << std::endl;
   return(pstack);
 };
 
@@ -221,101 +368,47 @@ void transport(Leakage &leak_tally , Flux &flux_tally, Slab s , std::stack<Parti
 //  modifies tally objects tally objects 
 //  for each particle in the stack
 //  run transport
-  double b = s.width / flux_tally.getBins();
-  
-  int    smallBin;
-  int    largeBin;
-  double small_x;
-  double large_x;
 
   while( ! pstack.empty() ){  
+     
+      // determine starting cell
+      for(int i =0; i < s.cellStarts.size(); ++i) {
+        if(pstack.top()->x >= s.cellStarts[i] and pstack.top()->x < s.cellStarts[i+1] ) {
+          pstack.top()->cell = i;
+        }
+      }
+      std::cout<<"New Particle!! " <<std::endl;
 
       while ( pstack.top()->alive ) {
         // do transport
+
         double optical_dist = -log( Urand() ); // optical distance to collison
-        double x1           = pstack.top()->x;
+     
+        std::cout << "Lets take a step" << std::endl;
+        std::cout << " x: " << pstack.top()->x <<  " mu: " << pstack.top()->mu << " OD: "<< optical_dist << std::endl; 
 
-        pstack.top()->x += optical_dist * pstack.top()->mu / s.total_xs;
-        double delta_x = pstack.top()->x - x1;
- 
-        // check for leakage
-        if ( pstack.top()->x < 0.0 || pstack.top()->x > s.width ) {
-          // leaked out
-          pstack.top()->alive = false;
-          if ( pstack.top()->x < 0.0 ) {
-            // update distance traveled and position to start of the slab
-            pstack.top()-> x = 0;
-            optical_dist = s.total_xs * x1 / std::abs(pstack.top()->mu); 
-          // tally if leaked out of right side
-          }
-          if ( pstack.top()->x > s.width ) {
-            //update leakage tally
-            leak_tally.incrementCount();
-            // update distance traveled and position to end of the slab 
-            pstack.top()->x = s.width;
-            optical_dist = s.total_xs * ( pstack.top()->x - x1 ) / std::abs( pstack.top()->mu );
-          }
-        }
+        // check if crossed into new cell, and find the total delta_x for the transport
+        double delta_x_real = s.updateCell(pstack.top() , optical_dist); 
         
-
-        // Flux tally update
-        std::vector<double> bounds =  flux_tally.getBounds();
-        if( pstack.top()->x >= bounds[0]  and pstack.top()->x <= bounds[1]) {
-          // update path flux tally in each spatial bin
-          // indexing from 0
-          int    oldBin  = floor(x1 / b);
-          int    newBin  = floor(pstack.top()->x / b);          
-        
-          // if the particle stayed in the same bin,
-          // add the whole path length to the sum in that bin
-          if ( oldBin == newBin ) {
-          //   path_lengths[oldBin] += optical_dist / s.total_xs;
+        // tally update
+        flux_tally.update(pstack.top() , delta_x_real);
+        leak_tally.update(pstack.top() , s.width);
+          
+        // determine next transport step
+        if (pstack.top()->alive == true) {
+          // have a collision
+          if ( Urand() < s.scatter_xs[pstack.top()->cell] / s.total_xs[pstack.top()->cell] ) {
+            // particle scatters
+            pstack.top()->mu = 2.0 * Urand() - 1.0;
+            std::cout<<"Scatter!!" <<std::endl;
           }
-      
-          //  otherwise iterate through the bins the particle passed through, 
-          //  incrementing them by the path length traversed in that bin
           else {
-            //sort the bins and positions the particles moved between
-            bool forward = newBin > oldBin; 
-           
-            if (forward == true) {
-              smallBin = oldBin;
-              largeBin = newBin;
-              small_x  = x1;
-              large_x  = pstack.top()->x;
-            }
-            else if (forward == false) {
-              smallBin = newBin;
-              largeBin = oldBin;
-              small_x  = pstack.top()->x;
-              large_x  = x1;
-            }
+            // absorbed :(
+            std::cout<<"Capture!!" <<std::endl <<std::endl;
+            pstack.top()->alive = false;
           }
-          
-          // increment the path lengths of the starting and ending mesh bin
-          flux_tally.path_lengths[smallBin] += (optical_dist / s.total_xs) * ( ( smallBin +1 ) * b - small_x ) / delta_x;
-          flux_tally.path_lengths[largeBin] += (optical_dist / s.total_xs) * (-( largeBin    ) * b + large_x ) / delta_x;
-          
-          //  increment the path_lengths in all the mesh bins the particle passed through completely
-          for ( int i = smallBin + 1 ; i <= largeBin - 1; ++i ) {
-            flux_tally.path_lengths[i] += b / std::abs(pstack.top()->mu);
-          }
-      } // end of flux tally update
-
-          
-      // determine next transport step
-      if (pstack.top()->alive == true) {
-        // have a collision
-        if ( Urand() < s.scatter_xs / s.total_xs ) {
-          // particle scatters
-          pstack.top()->mu = 2.0 * Urand() - 1.0;
         }
-        else {
-          // absorbed :(
-          pstack.top()->alive = false;
-        }
-      }
-    } // end of current particle
+    } // end of current particle. "He's dead Jim."
 
     // destruct particle object and remove ptr from stack
     Particle * tmp = pstack.top();
@@ -337,24 +430,18 @@ int main()  {
 
   // set up transport problem
   Input I; 
-  I.nHistories       = 1e7;
+  I.nHistories       = 1e4;
+  I.slab.setNCells(4);
   I.slab.width       = 4.0;
-  I.slab.nCells      = 4;
-  I.slab.total_xs    = 1.0;
-  I.slab.scatter_xs  = 0.0;
-  I.slab.fission_xs  = 0.0;
-
-//  I.slab.total_xs    = {0.0 , 0.3  , 1.0 , 1.0} ;
-//  I.slab.scatter_xs  = {0.0 , 0.25 , 0.7 , 0.1};
-//  I.slab.fission_xs  = {0.0 , 0.0  , 0.0 , 0.0};
+  I.slab.cellStarts  = {0.0 , 1.0  , 2.0 , 3.0};
+  I.slab.total_xs    = {1.0 , 1.0  , 1.0 , 1.0};
+  I.slab.scatter_xs  = {0.8 , 0.8  , 0.0 , 0.0};
+  I.slab.fission_xs  = {0.0 , 0.0  , 0.0 , 0.0};
 
   // define a source
   Source s;
-//  s.location =   2.0;
-//  s.mu_bins  = {-1.0 , -0.8 , -0.6, -0.4 , 0.0 , 0.8};
-//  s.mu_probs = { 0.1 ,  0.2 , 0.2 , 0.1 ,  0.2 , 0.2};
   s.location =   0.0;
-  s.mu_bins  = { 1.0 };
+  s.mu_bins  = { 1.0};
   s.mu_probs = { 1.0};
 
   // initialize a particle stack
